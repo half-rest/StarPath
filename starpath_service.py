@@ -1,17 +1,6 @@
 """
-StarPath 구현
 
-역할은 모두 Member의 메서드입니다. 누구나 어느 역할이든 맡을 수 있습니다.
-  deal()            배포자 : 비밀·계수 생성, 조각 계산, 자기 조각 보관, 나머지 조각 봉인
-  receive_share()   수신자 : 봉인된 (번호, 조각)을 열어 등록 정보와 대조 후 보관
-  write_document()  작성자 : k, C1, Z → 키 유도 → 본문 암호화 → 레코드
-  begin_open()      요청자 : 블라인딩 값 t 생성·보관, 요청값 B 공개
-  respond()         협력자 : B에 자기 조각을 적용한 부분 복호값 응답
-  finish_open()     요청자 : 자기 값 포함 τ명 결합 → t 제거 → 키 유도 → 복호
-  open_document()   요청자 : begin_open → 협력자 respond → finish_open 한 번에
-비밀값(조각 s_i, 블라인딩 t)은 그 값을 가진 Member 객체 밖으로 나가지 않습니다.
-
-[미정] 근거가 없어 비워 둔 부분 (호출하면 Unspecified 예외)
+[미정] 근거가 없어 비워 둔 부분
   1. group()                : 3072비트 안전 소수 p와 생성원 g의 값
   2. assign_numbers()       : 참여자 번호 배정 규칙
   3. rsa_keypair() / seal_share() / open_share() : RSA 키 크기, OAEP 해시, (번호, 조각) 인코딩
@@ -59,7 +48,7 @@ class VerificationError(ValueError):
 # ──────────────────────────────────────────────────────────────────────────────
 @dataclass(frozen=True)
 class Group:
-    """안전 소수 p = 2q+1, g는 위수 q 부분군의 원소."""
+    """안전 소수 p = 2q+1, g는 위수 q 부분군의 원소"""
     p: int
     q: int
     g: int
@@ -73,7 +62,7 @@ class Group:
             raise VerificationError("g가 위수 q 부분군에 있지 않음")
 
     def rand_scalar(self) -> int:
-        """1 … q-1 범위의 균등 난수."""
+        """1 … q-1 범위의 균등 난수"""
         return secrets.randbelow(self.q - 1) + 1
 
     def is_element(self, v: int, allow_identity: bool = False) -> bool:
@@ -81,18 +70,18 @@ class Group:
         return isinstance(v, int) and low < v < self.p and pow(v, self.q, self.p) == 1
 
     def require_element(self, v: int, what: str, allow_identity: bool = False) -> None:
-        """allow_identity: 조각이 0이면 y_i·d_i가 1이 될 수 있어 허용."""
+        """allow_identity: 조각이 0이면 y_i·d_i가 1이 될 수 있어 허용"""
         if not self.is_element(v, allow_identity):
             raise VerificationError(f"{what}: 위수 q 부분군의 원소가 아님")
 
 
 def group() -> Group:
-    """[미정] 안전 소수 p=2q+1 (3072비트). 실제 p·g 값이 정해지지 않음."""
+    """[미정] 안전 소수 p=2q+1 (3072비트). 실제 p·g 값이 정해지지 않음"""
     raise Unspecified("3072비트 안전 소수 p와 생성원 g 값 미정")
 
 
 def is_probable_prime(n: int, rounds: int = 40) -> bool:
-    """Miller–Rabin (군 파라미터 검사용)."""
+    """Miller–Rabin (군 파라미터 검사용)"""
     if n < 4:
         return n in (2, 3)
     if n % 2 == 0:
@@ -126,7 +115,7 @@ def poly_eval(coeffs: Sequence[int], x: int, q: int) -> int:
 
 
 def lagrange_at_zero(xi: int, xs: Sequence[int], q: int) -> int:
-    """λ_i = Π_{j≠i} x_j (x_j − x_i)^{-1}  (mod q)."""
+    """λ_i = Π_{j≠i} x_j (x_j − x_i)^{-1}  (mod q)"""
     num, den = 1, 1
     for xj in xs:
         if xj != xi:
@@ -136,7 +125,7 @@ def lagrange_at_zero(xi: int, xs: Sequence[int], q: int) -> int:
 
 
 def assign_numbers(member_ids: Sequence[str], grp: Group) -> dict[str, int]:
-    """[미정] 번호는 q보다 작은 서로 다른 값. 배정 규칙은 없음."""
+    """[미정] 번호는 q보다 작은 서로 다른 값. 배정 규칙은 없음"""
     raise Unspecified("참여자 번호 배정 규칙 미정 (배포자가 직접 지정해야 함)")
 
 
@@ -185,7 +174,7 @@ class DocumentRecord:
 
 @dataclass(frozen=True)
 class OpenRequest:
-    """협력자에게 보내는 공개 요청. 블라인딩 값 t는 들어 있지 않음."""
+    """협력자에게 보내는 공개 요청. 블라인딩 값 t는 들어 있지 않음"""
     request_no: int
     requester_id: str
     doc_id: str
@@ -202,7 +191,7 @@ class PartialDecryption:
 
 @dataclass
 class Server:
-    """공개 정보와 암호문만 보관. 조각·k·Z·t는 다루지 않음."""
+    """공개 정보와 암호문만 보관. 조각·k·Z·t는 다루지 않음"""
     teams: dict[str, TeamPublic] = field(default_factory=dict)
     documents: dict[str, list[DocumentRecord]] = field(default_factory=dict)
 
@@ -225,12 +214,12 @@ class Server:
 # 4) RSA-OAEP 조각 전달
 # ──────────────────────────────────────────────────────────────────────────────
 def rsa_keypair():
-    """[미정] RSA 키 크기."""
+    """[미정] RSA 키 크기"""
     raise Unspecified("RSA 키 크기 미정")
 
 
 def seal_share(recipient_public_key, x: int, share: int) -> bytes:
-    """RSA-OAEP(PK_수신자, (x, s_i)). [미정] OAEP 해시, (번호, 조각) 인코딩, 공개키 인증 방법."""
+    """RSA-OAEP(PK_수신자, (x, s_i)). [미정] OAEP 해시, (번호, 조각) 인코딩, 공개키 인증 방법"""
     raise Unspecified("RSA-OAEP 해시 / (번호, 조각) 인코딩 미정")
 
 
@@ -253,7 +242,7 @@ def from_nibbles(ns: Sequence[int]) -> int:
 
 
 def perm_multiplier(round_key: int) -> int:
-    """라운드 키 첫 칸이 짝수면 m=3, 홀수면 m=5."""
+    """라운드 키 첫 칸이 짝수면 m=3, 홀수면 m=5"""
     return 3 if (round_key >> (4 * (BLOCK_NIBBLES - 1))) % 2 == 0 else 5
 
 
@@ -296,7 +285,7 @@ def _check_round_keys(round_keys: Sequence[int]) -> None:
 
 
 def spn_encrypt(block: int, round_keys: Sequence[int]) -> int:
-    """round_keys = [RK_1 … RK_12, RK_final]. 마지막 라운드는 확산 생략 후 최종 키 XOR."""
+    """round_keys = [RK_1 … RK_12, RK_final]. 마지막 라운드는 확산 생략 후 최종 키 XOR"""
     _check_round_keys(round_keys)
     state = block
     for r in range(ROUNDS):
@@ -347,12 +336,12 @@ def cbc_decrypt(data: bytes, iv: bytes, round_keys: Sequence[int]) -> bytes:
 # 6) [미정] salt·키 유도·패딩·IV·MAC·증명
 # ──────────────────────────────────────────────────────────────────────────────
 def new_salt() -> bytes:
-    """[미정] salt는 서버에 저장. 길이·생성 방법 없음."""
+    """[미정] salt는 서버에 저장. 길이·생성 방법 없음"""
     raise Unspecified("salt 길이·생성 방법 미정")
 
 
 def derive_keys(z: int, salt: bytes, doc_id: str, version: str) -> list[int]:
-    """Z → HKDF-SHA256(salt, info=문서 ID·버전) → 라운드 키 13개. [미정] 입력 인코딩, 확장 방법."""
+    """Z → HKDF-SHA256(salt, info=문서 ID·버전) → 라운드 키 13개. [미정] 입력 인코딩, 확장 방법"""
     raise Unspecified("HKDF 입력 인코딩 / 라운드 키 13개 확장 규칙 미정")
 
 
@@ -389,7 +378,7 @@ def verify_partial(team: TeamPublic, b_req: int, member: MemberPublic, d_i: int,
 # ──────────────────────────────────────────────────────────────────────────────
 def select_partials(team: TeamPublic, requester_id: str, requester_has_share: bool,
                     responses: Sequence[PartialDecryption]) -> list[PartialDecryption]:
-    """정확히 τ명, 요청자가 조각을 가졌다면 자신의 값 포함."""
+    """정확히 τ명, 요청자가 조각을 가졌다면 자신의 값 포함"""
     grp = group()
     seen, chosen = set(), []
     for r in responses:
@@ -408,7 +397,7 @@ def select_partials(team: TeamPublic, requester_id: str, requester_has_share: bo
 
 
 def combine(team: TeamPublic, partials: Sequence[PartialDecryption]) -> int:
-    """S* = Π d_i^{λ_i}  (mod p)."""
+    """S* = Π d_i^{λ_i}  (mod p)"""
     grp = group()
     ids = [p.member_id for p in partials]
     if len(set(ids)) != THRESHOLD or len(ids) != THRESHOLD:
@@ -440,12 +429,12 @@ class Member:
     # ── 배포자 ──────────────────────────────────────────────────────────────
     def deal(self, team_id: str, key_version: str, numbers: dict[str, int],
              recipient_public_keys: dict[str, object]) -> tuple[TeamPublic, dict[str, bytes]]:
-        """팀 비밀 s와 계수를 만들고 조각을 나눔.
+        """팀 비밀 s와 계수를 만들고 조각을 나눔
 
-        numbers               : 참여자 ID → 번호 (배포자가 지정, 배정 규칙은 미정). 배포자 본인 포함.
+        numbers               : 참여자 ID → 번호 (배포자가 지정, 배정 규칙은 미정). 배포자 본인 포함
         recipient_public_keys : 다른 참여자들의 RSA 공개키 (인증 방법은 미정)
         반환                  : (서버에 등록할 공개 정보, 다른 참여자별 봉인된 조각)
-        배포자 자신의 조각은 이 객체에 바로 보관하고, s·계수는 함수가 끝나면 버림.
+        배포자 자신의 조각은 이 객체에 바로 보관하고, s·계수는 함수가 끝나면 버림
         """
         grp = group()
         if self.member_id not in numbers:
@@ -474,7 +463,7 @@ class Member:
 
     # ── 수신자 ──────────────────────────────────────────────────────────────
     def receive_share(self, team: TeamPublic, private_key, sealed: bytes) -> None:
-        """봉인된 (번호, 조각)을 열어 등록 정보와 맞는지 확인 후 보관."""
+        """봉인된 (번호, 조각)을 열어 등록 정보와 맞는지 확인 후 보관"""
         x, s_i = open_share(private_key, sealed)
         grp, me = group(), team.members[self.member_id]
         if x != me.x or not 0 <= s_i < grp.q or pow(grp.g, s_i, grp.p) != me.y:
@@ -483,7 +472,7 @@ class Member:
 
     # ── 작성자 ──────────────────────────────────────────────────────────────
     def write_document(self, team: TeamPublic, doc_id: str, version: str, plaintext: bytes) -> DocumentRecord:
-        """k와 Z는 이 메서드 밖으로 나가지 않음. 반환된 레코드를 서버에 저장."""
+        """k와 Z는 이 메서드 밖으로 나가지 않음. 반환된 레코드를 서버에 저장"""
         grp = group()
         team.validate()
         k = grp.rand_scalar()
@@ -499,7 +488,7 @@ class Member:
 
     # ── 요청자 ──────────────────────────────────────────────────────────────
     def begin_open(self, team: TeamPublic, record: DocumentRecord) -> OpenRequest:
-        """블라인딩 값 t를 만들어 이 객체에만 보관하고, 협력자에게 보낼 요청을 돌려줌."""
+        """블라인딩 값 t를 만들어 이 객체에만 보관하고, 협력자에게 보낼 요청을 돌려줌"""
         grp = group()
         if record.key_version != team.key_version:
             raise VerificationError("문서의 키 버전이 팀 키 버전과 다름")
@@ -512,7 +501,7 @@ class Member:
 
     def finish_open(self, team: TeamPublic, req: OpenRequest,
                     helper_responses: Sequence[PartialDecryption]) -> bytes:
-        """협력자 응답 + 자기 부분 복호값 → 검증 → 결합 → t 제거 → MAC 확인 → 키 유도 → 복호."""
+        """협력자 응답 + 자기 부분 복호값 → 검증 → 결합 → t 제거 → MAC 확인 → 키 유도 → 복호"""
         if req.requester_id != self.member_id or req.request_no not in self._open:
             raise PermissionError("내가 만든 요청이 아님")
         record, t = self._open.pop(req.request_no)
@@ -531,7 +520,7 @@ class Member:
 
     def open_document(self, team: TeamPublic, record: DocumentRecord,
                       helpers: Sequence["Member"]) -> bytes:
-        """요청 → 협력자 응답 수집 → 복원을 한 번에."""
+        """요청 → 협력자 응답 수집 → 복원을 한 번에"""
         req = self.begin_open(team, record)
         try:
             return self.finish_open(team, req, [h.respond(team, req) for h in helpers if h is not self])
@@ -540,7 +529,7 @@ class Member:
 
     # ── 협력자 ──────────────────────────────────────────────────────────────
     def respond(self, team: TeamPublic, req: OpenRequest) -> PartialDecryption:
-        """요청값 B에 자기 조각을 적용. B만 보며 C1·t·Z는 모름."""
+        """요청값 B에 자기 조각을 적용. B만 보며 C1·t·Z는 모름"""
         if self._share is None or self._team_id != team.team_id:
             raise PermissionError("이 팀의 조각이 없음")
         grp = group()
