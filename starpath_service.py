@@ -1001,37 +1001,3 @@ class Member:
         say(1, f"  {self.member_id}: d_{self.member_id} = B^s_{self.member_id} mod p = {show(d)}, "
                f"증명 (c={show(proof[0])}, z={show(proof[1])})")
         return PartialDecryption(self.member_id, d, proof)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 11) 실행 예
-# ──────────────────────────────────────────────────────────────────────────────
-def run_flow(grp: Group, block: BlockSpec, numbers: dict[str, int], plaintext: bytes) -> bytes:
-    """키 준비 → 조각 전달 → A가 문서 작성 → A·B·D 공동 복호"""
-    server = Server()
-    members = {mid: Member(mid) for mid in numbers}
-    keys = {mid: rsa_keypair() for mid in numbers if mid != "A"}
-    team, sealed = members["A"].deal("polygon", "k1", numbers,
-                                     {mid: k.public_key() for mid, k in keys.items()}, grp)
-    server.register_team(team)
-    for mid, blob in sealed.items():
-        members[mid].receive_share(server, "polygon", keys[mid], blob)
-    members["A"].write_document(server, "polygon", "doc-1", "v1", plaintext, block)
-    return members["A"].open_document(server, "polygon", "doc-1", [members["B"], members["D"]])
-
-
-def demo() -> None:
-    previous = TRACE_LEVEL
-    set_trace(2)
-    print("■ 전체 흐름: [미정] 3072비트 군 · 128비트·12라운드 블록 (s·k·t는 매번 난수, 큰 수는 앞뒤만 표시)")
-    out = run_flow(group(), REAL_BLOCK, assign_numbers(list("ABCDE"), group()), "StarPath 기밀 문서".encode())
-    print(f"  ▶ 복원 결과 {out.decode()}\n")
-    set_trace(previous)
-
-    print("[미정] 보고서에 정의되지 않아 임시값으로 동작하는 부분")
-    for name, desc in PROVISIONAL.items():
-        print(f"  - {name}: {desc}")
-
-
-if __name__ == "__main__":
-    demo()
