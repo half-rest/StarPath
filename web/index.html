@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StarPath 시연</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --line: #d9dce1; --text: #1d2129; --muted: #6b7280;
+    --log-bg: #0f1419; --log-text: #d6dde6;
+    --secret: #ff8a80; --tbd: #ffcc66; --head: #8ecbff; --ok: #7ee2a8; --err: #ff6b6b;
+    --c0: #2563eb; --c1: #059669; --c2: #c2410c; --c3: #7c3aed; --c4: #be185d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111418; --panel: #1a1f26; --line: #2c333d; --text: #e6e9ee; --muted: #9aa3ae; --log-bg: #0b0e12; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Malgun Gothic", sans-serif;
+         display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 16px;
+           border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 17px; margin: 0; }
+  header .info { color: var(--muted); font-size: 13px; flex: 1; min-width: 200px; }
+  header .info b { color: var(--text); font-weight: 600; }
+  main { flex: 1; display: grid; grid-template-columns: repeat(var(--n, 3), minmax(340px, 1fr)); gap: 10px;
+         padding: 10px; min-height: 0; overflow-x: auto; }
+  .pane-head .close { margin-left: auto; padding: 0 8px; font-size: 16px; line-height: 1.4; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .pane { background: var(--panel); border: 1px solid var(--line); border-top: 4px solid var(--accent);
+          border-radius: 8px; display: flex; flex-direction: column; min-height: 420px; overflow: hidden; }
+  .pane-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .pane-head select { font-size: 15px; font-weight: 700; color: var(--accent); }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--bg); color: var(--muted);
+           border: 1px solid var(--line); }
+  .badge.ok { color: #fff; background: var(--c1); border-color: var(--c1); }
+  .badge.wait { color: #fff; background: #b45309; border-color: #b45309; }
+  .actions { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--line); }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .row label { color: var(--muted); font-size: 12px; min-width: 52px; }
+  input, select, button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+                          border-radius: 6px; padding: 4px 8px; }
+  input[type=text] { flex: 1; min-width: 80px; }
+  button { cursor: pointer; background: var(--accent, var(--c0)); color: #fff; border-color: transparent; }
+  button.ghost { background: transparent; color: var(--text); border-color: var(--line); }
+  button:disabled { opacity: .4; cursor: default; }
+  .req { border: 1px dashed var(--line); border-radius: 6px; padding: 6px 8px; font-size: 13px;
+         display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .req .meta { flex: 1; min-width: 160px; }
+  .req .result { width: 100%; color: var(--c1); font-weight: 600; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .log { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 8px 10px; background: var(--log-bg);
+         color: var(--log-text); font: 12px/1.5 Consolas, "D2Coding", monospace; white-space: pre-wrap;
+         word-break: break-all; }
+  .log .h { color: var(--head); font-weight: 700; }
+  .log .s { color: var(--secret); }
+  .log .t { color: var(--tbd); }
+  .log .e { color: var(--err); font-weight: 700; }
+  .log .r { color: var(--ok); font-weight: 700; }
+  footer { padding: 6px 16px 10px; font-size: 12px; color: var(--muted); }
+  footer summary { cursor: pointer; }
+  footer ul { margin: 6px 0 0; padding-left: 18px; columns: 2; }
+  @media (max-width: 900px) { footer ul { columns: 1; } }
+  .busy { position: fixed; inset: 0; background: rgba(0,0,0,.25); display: none; align-items: center;
+          justify-content: center; color: #fff; font-size: 16px; }
+  .busy.on { display: flex; }
+</style>
+</head>
+<body>
+<header>
+  <h1>StarPath 3-of-5 시연</h1>
+  <div class="info" id="info"></div>
+  <label class="muted"><input type="checkbox" id="rounds"> 블록 암호 라운드까지 출력</label>
+  <button class="ghost" id="add" title="다른 참여자 시점의 화면을 옆에 추가">+ 참여자 화면 추가</button>
+  <button class="ghost" id="reset">처음부터</button>
+</header>
+<main id="panes"></main>
+<footer>
+  <details>
+    <summary>[미정] 보고서에 정의되지 않아 임시값으로 동작하는 부분</summary>
+    <ul id="tbd"></ul>
+  </details>
+  <div>시연용으로 참여자 5명(A~E)이 서버 프로세스 하나에 있습니다. 화면 한 칸은 참여자 한 명의 기기라고 보고, 칸마다 참여자를 골라 그 사람이 할 수 있는 동작만 합니다. 기본 3칸이며 "+ 참여자 화면 추가"로 다른 참여자 시점을 옆에 더 띄울 수 있습니다(최대 5칸). 키 준비 때 화면에 없는 참여자는 조각을 자동으로 받습니다.</div>
+</footer>
+<div class="busy" id="busy">계산 중… (RSA 4096비트 키 생성·3072비트 연산)</div>
+
+<script>
+const MEMBERS = ["A", "B", "C", "D", "E"];
+const ACCENTS = ["var(--c0)", "var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)"];
+const MIN_PANES = 3;   // 시연에 필요한 최소 인원 (요청자 + 협력자 2명)
+let paneMembers = ["A", "B", "D"];
+try {
+  const saved = JSON.parse(localStorage.getItem("starpath-panes"));
+  if (Array.isArray(saved) && saved.length >= MIN_PANES && saved.length <= MEMBERS.length
+      && saved.every(m => MEMBERS.includes(m)) && new Set(saved).size === saved.length) paneMembers = saved;
+} catch {}
+const savePanes = () => { try { localStorage.setItem("starpath-panes", JSON.stringify(paneMembers)); } catch {} };
+let state = null;
+const drafts = {};   // 입력 중인 값 유지
+
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+async function api(path, body) {
+  const busy = $("#busy");
+  const timer = setTimeout(() => busy.classList.add("on"), 150);
+  try {
+    const res = await fetch(path, body === undefined ? {} :
+      {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    state = await res.json();
+  } finally {
+    clearTimeout(timer); busy.classList.remove("on");
+  }
+  render();
+}
+
+function colorLine(line) {
+  const e = esc(line);
+  if (line.startsWith("══")) return `<span class="h">${e}</span>`;
+  if (line.startsWith("✖")) return `<span class="e">${e}</span>`;
+  if (line.includes("▶")) return `<span class="r">${e}</span>`;
+  return e.replace(/\[비밀\]/g, '<span class="s">[비밀]</span>').replace(/\[미정\]/g, '<span class="t">[미정]</span>');
+}
+
+function render() {
+  const s = state;
+  const team = s.team;
+  $("#info").innerHTML = team
+    ? `팀 polygon · 키 버전 <b>${esc(team.key_version)}</b> · 배포자 <b>${esc(s.dealer)}</b> · Y=<b>${esc(team.Y)}</b> · 저장된 문서 <b>${s.documents.length}</b>개`
+    : `키 준비 전 (${s.threshold}-of-${s.n}). 한 칸에서 "키 준비"를 눌러 시작하세요.`;
+  $("#rounds").checked = s.trace >= 2;
+  $("#tbd").innerHTML = Object.entries(s.provisional).map(([k, v]) => `<li><b>${esc(k)}</b>: ${esc(v)}</li>`).join("");
+
+  const panes = $("#panes");
+  panes.querySelectorAll("[data-draft]").forEach(el => drafts[el.dataset.draft] = el.value);
+  panes.style.setProperty("--n", paneMembers.length);
+  panes.innerHTML = paneMembers.map((mid, i) => paneHTML(mid, i)).join("");
+  $("#add").disabled = paneMembers.length >= MEMBERS.length;
+  panes.querySelectorAll("[data-draft]").forEach(el => {
+    const v = drafts[el.dataset.draft];
+    if (v === undefined) return;
+    if (el.tagName === "SELECT" && ![...el.options].some(o => o.value === v)) return;   // 없어진 선택지는 복원하지 않음
+    el.value = v;
+  });
+  panes.querySelectorAll(".log").forEach(el => el.scrollTop = el.scrollHeight);
+}
+
+function paneHTML(mid, i) {
+  const s = state, me = s.members[mid], team = s.team;
+  const others = paneMembers.filter((_, j) => j !== i);
+  const opts = MEMBERS.map(m => `<option ${m === mid ? "selected" : ""} ${others.includes(m) ? "disabled" : ""}>${m}</option>`).join("");
+  let badge = `<span class="badge">조각 없음</span>`;
+  if (me.has_share) badge = `<span class="badge ok">조각 보유 · x=${team.members[mid].x}</span>`;
+  else if (me.inbox) badge = `<span class="badge wait">봉인 조각 도착</span>`;
+
+  const acts = [];
+  if (!s.dealer) {
+    acts.push(`<div class="row"><button data-act="deal" data-i="${i}">키 준비 (배포자로 조각 나누기)</button></div>`);
+  }
+  if (me.inbox) {
+    acts.push(`<div class="row"><button data-act="receive" data-i="${i}">봉인 조각 열어 받기</button></div>`);
+  }
+  if (team) {
+    acts.push(`<div class="row"><label>작성</label>
+      <input type="text" data-draft="doc-${mid}" placeholder="문서 ID" value="doc-1" style="max-width:90px">
+      <input type="text" data-draft="text-${mid}" placeholder="평문" value="StarPath 기밀 문서">
+      <button data-act="write" data-i="${i}">암호화·저장</button></div>`);
+    const ids = [...new Set(s.documents.map(d => d.doc_id))];
+    acts.push(`<div class="row"><label>복호</label>
+      <select data-draft="open-${mid}" ${ids.length ? "" : "disabled"}>${ids.map(d => `<option>${esc(d)}</option>`).join("") || "<option>문서 없음</option>"}</select>
+      <button data-act="request" data-i="${i}" ${ids.length ? "" : "disabled"}>복호 요청 (최신 버전)</button></div>`);
+  }
+  const reqs = s.requests.map(r => reqHTML(r, mid, i, me)).filter(Boolean);
+  if (reqs.length) acts.push(...reqs);
+
+  return `<section class="pane" style="--accent:${ACCENTS[i]}">
+    <div class="pane-head">참여자 <select data-pane="${i}">${opts}</select> ${badge}
+      ${paneMembers.length > MIN_PANES ? `<button class="ghost close" data-close="${i}" title="이 화면 닫기">×</button>` : ""}</div>
+    <div class="actions">${acts.join("") || '<span class="muted">할 수 있는 동작이 없습니다.</span>'}</div>
+    <pre class="log">${me.log.map(colorLine).join("\n") || '<span class="muted">이 참여자의 계산 기록이 여기에 나옵니다.</span>'}</pre>
+  </section>`;
+}
+
+function reqHTML(r, mid, i, me) {
+  const need = state.threshold - 1;
+  const meta = `요청 #${r.no} · ${esc(r.requester)} → ${esc(r.doc_id)} ${esc(r.version)} · 블라인딩 값 B=${esc(r.B)}`;
+  if (r.requester === mid) {
+    const got = r.responders.length;
+    const btn = r.open
+      ? `<button data-act="finish" data-i="${i}" data-no="${r.no}" ${got >= need ? "" : "disabled"}>결합·복호 (응답 ${got}명 / 필요 ${need}명)</button>`
+      : "";
+    const res = r.result !== null ? `<div class="result">복원: ${esc(r.result)}</div>`
+      : (!r.open ? `<div class="muted">요청 종료</div>` : `<div class="muted">응답: ${r.responders.join(", ") || "아직 없음"}</div>`);
+    return `<div class="req"><span class="meta">내 ${meta}</span>${btn}${res}</div>`;
+  }
+  if (!r.open) return "";
+  const answered = r.responders.includes(mid);
+  return `<div class="req"><span class="meta">${meta}</span>
+    ${answered ? '<span class="muted">응답함</span>'
+      : `<button data-act="respond" data-i="${i}" data-no="${r.no}" ${me.has_share ? "" : "disabled"}>부분 복호 응답</button>`}</div>`;
+}
+
+$("#panes").addEventListener("change", e => {
+  const el = e.target;
+  if (el.dataset.pane !== undefined) {
+    paneMembers[+el.dataset.pane] = el.value;
+    savePanes();
+    render();
+  }
+});
+
+$("#add").addEventListener("click", () => {
+  const next = MEMBERS.find(m => !paneMembers.includes(m));
+  if (!next) return;
+  paneMembers.push(next);
+  savePanes();
+  render();
+  $("#panes").scrollLeft = $("#panes").scrollWidth;
+});
+
+$("#panes").addEventListener("click", e => {
+  const c = e.target.closest("button[data-close]");
+  if (c) {
+    paneMembers.splice(+c.dataset.close, 1);
+    savePanes();
+    render();
+    return;
+  }
+  const b = e.target.closest("button[data-act]");
+  if (!b) return;
+  const mid = paneMembers[+b.dataset.i];
+  const val = k => { const el = $(`[data-draft="${k}-${mid}"]`); return el ? el.value : ""; };
+  const act = b.dataset.act;
+  if (act === "deal") api("/api/deal", {member: mid, visible: paneMembers});
+  else if (act === "receive") api("/api/receive", {member: mid});
+  else if (act === "write") api("/api/write", {member: mid, doc_id: val("doc"), text: val("text")});
+  else if (act === "request") api("/api/request", {member: mid, doc_id: val("open")});
+  else if (act === "respond") api("/api/respond", {member: mid, no: +b.dataset.no});
+  else if (act === "finish") api("/api/finish", {member: mid, no: +b.dataset.no});
+});
+
+$("#rounds").addEventListener("change", e => api("/api/trace", {level: e.target.checked ? 2 : 1}));
+$("#reset").addEventListener("click", () => { if (confirm("모든 상태를 지우고 처음부터 시작할까요?")) api("/api/reset", {}); });
+
+api("/api/state");
+</script>
+</body>
+</html>
