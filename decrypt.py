@@ -67,6 +67,7 @@ def lagrange_at_zero(xi: int, xs: Sequence[int], q: int) -> int:
 def combine(grp: Group, points: Sequence[tuple[int, int]]) -> int:
     """S* = Π d_i^{λ_i}  (mod p)"""
     xs = [x for x, _ in points]
+    # [직접 설계] 정확히 τ명의 서로 다른 값만 결합
     if len(points) != THRESHOLD or len(set(xs)) != THRESHOLD:
         raise PermissionError(f"정확히 {THRESHOLD}명의 서로 다른 값이 필요함")
     s_star = 1
@@ -89,6 +90,7 @@ def recover_z(grp: Group, Y: int, t: int, partials: Sequence[tuple[str, int, int
         say(1, f"    {mid}: x={x}, d={show(d)}, λ={show(lam)}, d^λ mod p={show(pow(d, lam, grp.p))}")
     s_star = combine(grp, [(x, d) for _, x, d in partials])
     y_t = pow(Y, t, grp.p)
+    # [직접 설계] S* = B^s에서 요청자가 Y^t를 제거해 Z 복원, 전체 비밀 s는 복원하지 않음
     z = unblind(grp, s_star, Y, t)
     say(1, f"  S* = Π d^λ mod p = {show(s_star)}  (= B^s)")
     say(1, f"  Y^t = {show(y_t)}, (Y^t)^{{-1}} = {show(pow(y_t, -1, grp.p))}")
@@ -100,6 +102,7 @@ def inv_permute(ns: list[int], m: int) -> list[int]:
     n = len(ns)
     out = [0] * n
     for j in range(n):
+        # [직접 설계] 재배열의 역연산
         out[(m * j) % n] = ns[j]
     return out
 
@@ -108,6 +111,7 @@ def inv_diffuse(ns: list[int]) -> list[int]:
     out = []
     for i in range(0, len(ns), 4):
         p, q, s1, s2 = ns[i:i + 4]
+        # [직접 설계] 확산의 역연산 (d, c, b, a 순서로 되풂)
         d = s2 ^ p
         c = s1 ^ d
         b = q ^ c
@@ -123,6 +127,7 @@ def spn_decrypt(block: int, round_keys: Sequence[int], spec: BlockSpec = REAL_BL
     for r in range(spec.rounds - 1, -1, -1):
         rk = round_keys[r]
         ns = to_nibbles(state, n)
+        # [직접 설계] 암호화 라운드의 역순 (마지막 라운드는 역확산 생략)
         if r < spec.rounds - 1:
             ns = inv_diffuse(ns)
         m = perm_multiplier(rk, n)

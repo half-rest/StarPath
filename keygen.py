@@ -69,6 +69,7 @@ def generate_team_key(grp: Group, numbers: dict[str, int]) -> tuple[int, dict[st
     Y = pow(grp.g, coeffs[0], grp.p)
     say(1, f"  팀 공개키 Y = g^s mod p = {show(Y)}")
     shares = make_shares(coeffs, numbers, grp.q)
+    # [직접 설계] 조각을 만든 뒤 s·계수 폐기
     coeffs.clear()
     ys = {mid: pow(grp.g, s, grp.p) for mid, s in shares.items()}
     for mid, s in shares.items():

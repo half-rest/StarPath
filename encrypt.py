@@ -29,13 +29,15 @@ def new_salt() -> bytes:
 
 def permute(ns: list[int], m: int) -> list[int]:
     n = len(ns)
-    return [ns[(m * j) % n] for j in range(n)]          # S'[j] = S[(m·j) mod n]
+    # [직접 설계] 위치 재배열 S'[j] = S[(m·j) mod n]
+    return [ns[(m * j) % n] for j in range(n)]
 
 
 def diffuse(ns: list[int]) -> list[int]:
     out = []
     for i in range(0, len(ns), 4):
         a, b, c, d = ns[i:i + 4]
+        # [직접 설계] 행 단위 XOR 확산 (a, b, c, d) → (a⊕b, b⊕c, c⊕d, d⊕a⊕b)
         out += [a ^ b, b ^ c, c ^ d, d ^ a ^ b]
     return out
 
@@ -46,6 +48,7 @@ def spn_encrypt(block: int, round_keys: Sequence[int], spec: BlockSpec = REAL_BL
     n, state = spec.nibbles, block
     for r in range(spec.rounds):
         rk = round_keys[r]
+        # [직접 설계] 라운드 = 키 XOR → S-Box → 재배열 → 확산, 마지막 라운드는 확산 생략 후 최종 키 XOR
         x = state ^ rk
         ns = [SBOX[v] for v in to_nibbles(x, n)]
         sb = from_nibbles(ns)

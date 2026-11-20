@@ -273,6 +273,7 @@ def from_nibbles(ns: Sequence[int]) -> int:
 
 def perm_multiplier(round_key: int, n: int) -> int:
     """라운드 키 첫 칸이 짝수면 m=3, 홀수면 m=5"""
+    # [직접 설계] 라운드 키 첫 칸으로 재배열 배수 m 선택
     return 3 if (round_key >> (4 * (n - 1))) % 2 == 0 else 5
 
 

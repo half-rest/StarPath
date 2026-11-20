@@ -147,6 +147,7 @@ def select_partials(team: TeamPublic, req: OpenRequest, requester_has_share: boo
         say(1, f"    {r.member_id}: 증명 검증 통과")
         seen.add(r.member_id)
         valid.append(r)
+    # [직접 설계] 요청자 값 포함, 3명 미만이면 거부, 4명 이상이어도 3명만 골라 결합
     if requester_has_share and req.requester_id not in seen:
         raise VerificationError("요청자가 조각을 가졌다면 자신의 부분 복호값을 포함해야 함")
     if len(valid) < THRESHOLD:
@@ -186,6 +187,7 @@ class Member:
         grp = grp or group()
         if self.member_id not in numbers:
             raise ValueError("배포자도 참여자 번호가 있어야 함")
+        # [직접 설계] 번호 배정 → RSA-OAEP로 (번호, 조각) 전달 → 자기 조각만 남기고 s·계수·다른 조각 폐기
         check_numbers(numbers, grp)
         others = [mid for mid in numbers if mid != self.member_id]
         if set(recipient_public_keys) != set(others):
@@ -215,6 +217,7 @@ class Member:
             raise PermissionError("이 팀의 참여자가 아님")
         x, s_i = open_share(private_key, sealed)
         grp, me = team.grp, team.members[self.member_id]
+        # [직접 설계] 받은 조각을 서버에 등록된 번호·검증 공개키와 대조한 뒤 보관
         if x != me.x or not 0 <= s_i < grp.q or pow(grp.g, s_i, grp.p) != me.y:
             raise VerificationError("받은 (번호, 조각)이 등록된 공개 정보와 맞지 않음")
         self._share, self._team_id = s_i, team.team_id
@@ -250,6 +253,7 @@ class Member:
         grp.require_element(record.C1, "C1")
         say(1, f"══ 복호화 (요청자 {self.member_id}, 문서 {record.doc_id} {record.version}) ══")
         say(1, f"  서버에서 C1={show(record.C1)} 조회")
+        # [직접 설계] C1을 그대로 보내지 않고 B = C1·g^t로 가려서 보냄 (t는 요청자만 보관)
         while True:
             t = grp.rand_scalar()
             b = blind(grp, record.C1, t)
@@ -271,6 +275,7 @@ class Member:
         grp = team.grp
         has_share = self.has_share_for(team.team_id)
         responses = list(helper_responses)
+        # [직접 설계] 요청자도 조각이 있으면 자기 부분 복호값을 결합에 넣음
         if has_share:
             responses.insert(0, self.respond(server, req))
         say(1, "  부분 복호값 검증")
@@ -307,6 +312,7 @@ class Member:
         grp = team.grp
         grp.require_element(req.b_req, "B_req")
         self._answered.add(req.request_no)
+        # [직접 설계] 협력자는 B에만 조각을 적용 (어느 문서의 C1인지, Z는 모름)
         d = partial_decrypt(grp, req.b_req, self._share)
         proof = make_proof(grp, req.b_req, self._share, d)
         say(1, f"  {self.member_id}: d_{self.member_id} = B^s_{self.member_id} mod p = {show(d)}, "
