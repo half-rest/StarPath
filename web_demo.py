@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import threading
-import warnings
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -24,8 +23,6 @@ HOST, PORT = "127.0.0.1", 8000
 TEAM_ID, KEY_VERSION = "polygon", "k1"
 MEMBER_IDS = list("ABCDE")
 WEB_DIR = Path(__file__).with_name("web")
-
-warnings.simplefilter("ignore", sp.ProvisionalWarning)   # [미정] 목록은 화면 아래에 따로 보여 줌
 
 
 class Demo:
@@ -149,7 +146,6 @@ class Demo:
                               "log": self.logs[mid]} for mid in MEMBER_IDS},
             "documents": docs,
             "requests": reqs,
-            "provisional": shared.PROVISIONAL,
         }
 
 

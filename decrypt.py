@@ -13,11 +13,9 @@ import hashlib
 import hmac
 from typing import Sequence
 
-from shared import (MAC_HASH, REAL_BLOCK, SBOX, THRESHOLD, BlockSpec, DocumentRecord, Group,
+from shared import (INV_SBOX, MAC_HASH, REAL_BLOCK, THRESHOLD, BlockSpec, DocumentRecord, Group,
                     VerificationError, check_block, derive_keys, encode_fields, from_nibbles, hexw,
-                    hmac_tag, mac_input, mac_key, perm_multiplier, provisional, say, show, to_nibbles)
-
-INV_SBOX = [SBOX.index(i) for i in range(16)]
+                    hmac_tag, mac_input, mac_key, perm_multiplier, say, show, sub_bytes, to_nibbles)
 
 
 def blind(grp: Group, C1: int, t: int) -> int:
@@ -34,7 +32,6 @@ def _challenge(grp: Group, *vals: int) -> int:
     return int.from_bytes(hashlib.sha256(encode_fields(grp.p, grp.g, *vals)).digest(), "big") % grp.q
 
 
-@provisional("Chaum–Pedersen 증명 (Fiat–Shamir, SHA-256): log_g y_i = log_B d_i")
 def make_proof(grp: Group, b: int, share: int, d: int) -> tuple[int, int]:
     y = pow(grp.g, share, grp.p)
     w = grp.rand_scalar()
@@ -42,7 +39,6 @@ def make_proof(grp: Group, b: int, share: int, d: int) -> tuple[int, int]:
     return c, (w + c * share) % grp.q
 
 
-@provisional("Chaum–Pedersen 증명 검증 (Fiat–Shamir, SHA-256)")
 def verify_partial(grp: Group, b: int, y: int, d: int, proof: object) -> None:
     if not (isinstance(proof, tuple) and len(proof) == 2
             and all(isinstance(v, int) and 0 <= v < grp.q for v in proof)):
@@ -132,9 +128,9 @@ def spn_decrypt(block: int, round_keys: Sequence[int], spec: BlockSpec = REAL_BL
             ns = inv_diffuse(ns)
         m = perm_multiplier(rk, n)
         ns = inv_permute(ns, m)
-        state = from_nibbles([INV_SBOX[v] for v in ns]) ^ rk
+        state = sub_bytes(from_nibbles(ns), spec.block_bytes, INV_SBOX) ^ rk
         say(2, f"        R{r + 1} 역: " + ("역확산 → " if r < spec.rounds - 1 else "")
-               + f"역재배열(m={m}) → 역 S-Box → ⊕RK = {hexw(state, n)}")
+               + f"역재배열(m={m}) → 역 AES S-Box → ⊕RK = {hexw(state, n)}")
     return state
 
 
@@ -153,7 +149,6 @@ def cbc_decrypt(data: bytes, iv: bytes, round_keys: Sequence[int], spec: BlockSp
     return bytes(out)
 
 
-@provisional("CBC 패딩 = PKCS#7 (MAC 확인 뒤에만 호출)")
 def unpad(data: bytes, spec: BlockSpec = REAL_BLOCK) -> bytes:
     if not data or len(data) % spec.block_bytes:
         raise VerificationError("패딩 길이가 잘못됨")

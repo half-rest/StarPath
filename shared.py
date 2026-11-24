@@ -1,26 +1,6 @@
-"""StarPath 공통 요소: 진행 출력, [미정] 표시, 상수, 군, 블록 규격, HKDF, MAC, 문서 레코드
+"""StarPath 공통 요소: 진행 출력, 상수, 군, 블록 규격, HKDF, MAC, 문서 레코드
 
 키 생성(keygen.py) · 암호화(encrypt.py) · 복호화(decrypt.py)가 함께 쓰는 부분만 둔다.
-
-[미정] 보고서에 정의되지 않은 부분 (값은 미정, 동작을 위해 임시값을 넣어 둠)
-  1. group()                : RFC 3526 3072비트 MODP 군 (안전 소수 p, g=2)            … shared.py
-  2. assign_numbers()       : 넘겨받은 순서대로 1, 2, …, N                             … keygen.py
-  3. RSA_KEY_BITS=4096 / RSA_PUBLIC_EXPONENT=65537 / OAEP_HASH·MGF1_HASH=SHA-256    … keygen.py
-     encode_share()         : (번호, 조각)을 각각 2바이트 길이 + 빅엔디언 정수로 이어 붙임
-  4. new_salt()             : 32바이트 난수                                            … encrypt.py
-  5. derive_keys()          : Z는 p 길이 빅엔디언, info=encode_fields(문서 ID, 키 버전),  … shared.py
-                              암호화 키 32바이트 → HKDF로 라운드 키 (R+1)개
-  6. pad() / unpad()        : PKCS#7                                                   … encrypt.py / decrypt.py
-  7. new_iv()               : 블록 크기 난수                                            … encrypt.py
-  8. MAC_HASH=sha256 / mac_key() / mac_input() : Z에서 HKDF로 MAC 키, 태그 외 모든 레코드 필드 … shared.py
-  9. make_proof() / verify_partial() : Chaum–Pedersen (Fiat–Shamir, SHA-256)         … decrypt.py
- 10. pick_threshold()       : 요청자 먼저, 나머지는 응답 순서로 τ명                    … roles.py
- 11. authenticate()         : 신원 확인 없이 통과 (보안 기능 없음)                     … roles.py
- 12. encode_fields()        : 필드마다 4바이트 길이 + 형식 태그 + 값                   … shared.py
-
-[미정] 표시 방법
-  - 함수: @provisional("…") 데코레이터, 상수: provisional_value(…)
-  - 모두 PROVISIONAL 사전에 등록되고, 처음 사용할 때 ProvisionalWarning이 한 번 출력됨
 
 진행 출력
   - set_trace(0): 끔, set_trace(1): 초기 설정·암호화·복호화 단계별 값, set_trace(2): 블록 암호 라운드까지
@@ -31,11 +11,9 @@
 from __future__ import annotations
 
 import contextlib
-import functools
 import hashlib
 import hmac
 import secrets
-import warnings
 from dataclasses import dataclass
 from typing import Callable, Iterator, Sequence
 
@@ -82,55 +60,55 @@ def hexw(v: int, nibbles: int) -> str:
     return f"{v:0{nibbles}X}"
 
 
-PROVISIONAL: dict[str, str] = {}
-_warned: set[str] = set()
-
-
-class ProvisionalWarning(UserWarning):
-    """보고서에 정의되지 않은 값(임시값)이 사용됨"""
-
-
-def _warn_provisional(name: str) -> None:
-    if name not in _warned:
-        _warned.add(name)
-        warnings.warn(f"[미정] {name}: {PROVISIONAL[name]}", ProvisionalWarning, stacklevel=3)
-
-
-def provisional(description: str):
-    """보고서에 근거가 없는 함수 표시"""
-    def deco(func):
-        PROVISIONAL[func.__name__] = description
-
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            _warn_provisional(func.__name__)
-            return func(*args, **kwargs)
-
-        wrapper.provisional = description
-        return wrapper
-    return deco
-
-
-def provisional_value(name: str, value, description: str):
-    """보고서에 근거가 없는 상수 표시"""
-    PROVISIONAL[name] = description
-    return value
-
-
 N_MEMBERS, THRESHOLD = 5, 3
 
-SBOX = [0xC, 0x5, 0x6, 0xB, 0x9, 0x0, 0xA, 0xD, 0x3, 0xE, 0xF, 0x8, 0x4, 0x7, 0x1, 0x2]
+def _aes_sbox() -> list[int]:
+    """AES S-Box (FIPS 197): GF(2^8) 역원 → 아핀 변환 (x⁸+x⁴+x³+x+1, 상수 0x63)"""
+    def mul(a: int, b: int) -> int:
+        r = 0
+        while b:
+            if b & 1:
+                r ^= a
+            a = ((a << 1) ^ 0x11B) if a & 0x80 else a << 1
+            b >>= 1
+        return r
 
-MAC_HASH: str = provisional_value("MAC_HASH", "sha256", "HMAC 해시 SHA-256")
-SALT_BYTES: int = provisional_value("SALT_BYTES", 32, "salt 32바이트")
-ENC_KEY_BYTES: int = provisional_value("ENC_KEY_BYTES", 32, "HKDF 암호화 키·MAC 키 32바이트")
+    def inv(a: int) -> int:
+        r, e = 1, 254
+        while e:
+            if e & 1:
+                r = mul(r, a)
+            a, e = mul(a, a), e >> 1
+        return r
+
+    table = []
+    for x in range(256):
+        b = inv(x) if x else 0
+        y = b
+        for i in range(1, 5):
+            y ^= ((b << i) | (b >> (8 - i))) & 0xFF
+        table.append(y ^ 0x63)
+    return table
+
+
+SBOX = _aes_sbox()
+INV_SBOX = [SBOX.index(i) for i in range(256)]
+assert SBOX[0x00] == 0x63 and SBOX[0x53] == 0xED and SBOX[0xFF] == 0x16
+
+
+def sub_bytes(v: int, n_bytes: int, table: Sequence[int] = SBOX) -> int:
+    """블록을 바이트로 나눠 S-Box 표로 치환"""
+    return int.from_bytes(bytes(table[b] for b in v.to_bytes(n_bytes, "big")), "big")
+
+MAC_HASH = "sha256"
+SALT_BYTES = 32
+ENC_KEY_BYTES = 32
 
 
 class VerificationError(ValueError):
     """입력값·조각·응답 검증 실패"""
 
 
-@provisional("필드마다 4바이트 길이 + 형식 태그(s/i/b) + 값(UTF-8 / 빅엔디언 / 바이트)")
 def encode_fields(*parts: bytes | str | int) -> bytes:
     out = bytearray()
     for p in parts:
@@ -205,13 +183,8 @@ _P3072 = int(
 REAL_GROUP = Group(p=_P3072, q=(_P3072 - 1) // 2, g=2)
 
 
-@provisional("실제 군 = RFC 3526 3072비트 MODP 군 (안전 소수 p, g=2)")
-def _real_group() -> Group:
-    return REAL_GROUP
-
-
 def group() -> Group:
-    return _real_group()
+    return REAL_GROUP
 
 
 def is_probable_prime(n: int, rounds: int = 40) -> bool:
@@ -306,8 +279,6 @@ def hkdf(ikm: bytes, salt: bytes, info: bytes, length: int) -> bytes:
     return hkdf_expand(hkdf_extract(salt, ikm), info, length)
 
 
-@provisional("Z → p 길이 빅엔디언, info = encode_fields(문서 ID, 키 버전), 암호화 키 ENC_KEY_BYTES, "
-             "라운드 키 = HKDF(암호화 키, salt 없음, info='StarPath round keys')를 블록 크기씩 자름")
 def derive_keys(z: int, grp: Group, salt: bytes, doc_id: str, key_version: str,
                 spec: BlockSpec = REAL_BLOCK) -> list[int]:
     """Z → HKDF-SHA256(salt, info=(문서 ID, 키 버전)) → 암호화 키 → HKDF → 라운드 키"""
@@ -347,13 +318,11 @@ def hmac_tag(key: bytes, data: bytes, hash_name: str | None = None) -> bytes:
     return hmac.new(key, data, hash_name or MAC_HASH).digest()
 
 
-@provisional("MAC 키 = HKDF(Z, salt, info=encode_fields(문서 ID, 키 버전, 'mac'))")
 def mac_key(z: int, rec: DocumentRecord, grp: Group) -> bytes:
     return hkdf(z.to_bytes(grp.elem_bytes, "big"), rec.salt,
                 encode_fields(rec.doc_id, rec.key_version, "mac"), ENC_KEY_BYTES)
 
 
-@provisional("MAC 적용 범위 = 태그를 뺀 레코드 전체 필드 (encode_fields)")
 def mac_input(rec: DocumentRecord) -> bytes:
     return encode_fields(rec.team_id, rec.doc_id, rec.version, rec.key_version, rec.author_id, rec.C1,
                          rec.salt, rec.iv, rec.block.block_bytes, rec.block.rounds, rec.ciphertext)

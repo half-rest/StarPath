@@ -1,12 +1,11 @@
-"""StarPath 역할: 서버(공개 정보·암호문 보관)와 참여자(배포자·수신자·작성자·요청자·협력자)
+"""StarPath 역할: 서버(공개 정보·암호문 보관)와 참여자(최초 작성자·수신자·작성자·요청자·협력자)
 
 알고리즘은 파일별로 나뉘어 있음
-  shared.py  : 진행 출력, [미정] 표시, 상수, 군, 블록 규격, HKDF·키 유도, 문서 레코드·MAC
+  shared.py  : 진행 출력, 상수, 군, 블록 규격, HKDF·키 유도, 문서 레코드·MAC
   keygen.py  : 키 생성 (Shamir 조각, Y, y_i, RSA-OAEP 조각 전달)
   encrypt.py : 암호화 (C1·Z, SPN·CBC, HMAC)
   decrypt.py : 복호화 (블라인딩, 부분 복호·증명, 라그랑주 결합, SPN 역연산)
 이 파일은 누가 무엇을 할 수 있는지(역할 분리)만 다루고 계산은 위 파일에 맡긴다.
-[미정] 목록은 shared.py 머리말 참고.
 """
 
 from __future__ import annotations
@@ -17,23 +16,23 @@ from typing import Sequence
 
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from shared import (KNOWN_BLOCKS, N_MEMBERS, PROVISIONAL, REAL_BLOCK, REAL_GROUP, THRESHOLD, BlockSpec,
-                    DocumentRecord, Group, ProvisionalWarning, VerificationError, capture, group,
-                    provisional, say, set_trace, show)
+from shared import (KNOWN_BLOCKS, N_MEMBERS, REAL_BLOCK, REAL_GROUP, THRESHOLD, BlockSpec,
+                    DocumentRecord, Group, VerificationError, capture, group,
+                    say, set_trace, show)
 from decrypt import blind, decrypt_document, partial_decrypt, make_proof, recover_z, verify_partial
 from encrypt import encrypt_document
 from keygen import assign_numbers, check_numbers, generate_team_key, open_share, rsa_keypair, seal_share
 
 __all__ = [
-    "N_MEMBERS", "THRESHOLD", "PROVISIONAL", "REAL_BLOCK", "REAL_GROUP", "BlockSpec", "Group",
-    "ProvisionalWarning", "VerificationError", "capture", "group", "set_trace", "show",
+    "N_MEMBERS", "THRESHOLD", "REAL_BLOCK", "REAL_GROUP", "BlockSpec", "Group",
+    "VerificationError", "capture", "group", "set_trace", "show",
     "assign_numbers", "rsa_keypair", "authenticate", "MemberPublic", "TeamPublic", "DocumentRecord",
     "OpenRequest", "PartialDecryption", "Server", "Member", "select_partials", "pick_threshold",
 ]
 
 
-@provisional("신원 확인 없이 통과 (보안 기능 없음, 밝힌 ID를 그대로 믿음)")
 def authenticate(team: "TeamPublic", member_id: str, message: object) -> None:
+    """신원 확인은 하지 않음 (밝힌 ID를 그대로 믿음)"""
     return None
 
 
@@ -125,7 +124,6 @@ class Server:
         raise KeyError((doc_id, version))
 
 
-@provisional("τ명보다 많이 통과하면 요청자 값을 먼저, 나머지는 응답 순서대로 τ명")
 def pick_threshold(valid: list[PartialDecryption], requester_id: str) -> list[PartialDecryption]:
     own = [r for r in valid if r.member_id == requester_id]
     return (own + [r for r in valid if r.member_id != requester_id])[:THRESHOLD]
@@ -171,29 +169,29 @@ class Member:
     def has_share_for(self, team_id: str) -> bool:
         return self._share is not None and self._team_id == team_id
 
-    # ── 배포자 ──────────────────────────────────────────────────────────────
+    # ── 최초 작성자 ──────────────────────────────────────────────────────────
     def deal(self, team_id: str, key_version: str, numbers: dict[str, int],
              recipient_public_keys: dict[str, rsa.RSAPublicKey],
              grp: Group | None = None) -> tuple[TeamPublic, dict[str, bytes]]:
         """팀 비밀 s와 계수를 만들고 조각을 나눔
 
-        numbers               : 참여자 ID → 번호 (배포자가 지정). 배포자 본인 포함
+        numbers               : 참여자 ID → 번호 (최초 작성자가 지정). 최초 작성자 본인 포함
         recipient_public_keys : 다른 참여자들의 RSA 공개키
         반환                 : (서버에 등록할 공개 정보, 다른 참여자별 봉인된 조각)
-        배포자 자신의 조각은 이 객체에 바로 보관하고, s·계수는 함수가 끝나면 버림
+        최초 작성자 자신의 조각은 이 객체에 바로 보관하고, s·계수는 함수가 끝나면 버림
         """
         if self._share is not None:
             raise PermissionError("이미 조각을 보관 중 (키 준비는 팀 결성 때 한 번)")
         grp = grp or group()
         if self.member_id not in numbers:
-            raise ValueError("배포자도 참여자 번호가 있어야 함")
+            raise ValueError("최초 작성자도 참여자 번호가 있어야 함")
         # [직접 설계] 번호 배정 → RSA-OAEP로 (번호, 조각) 전달 → 자기 조각만 남기고 s·계수·다른 조각 폐기
         check_numbers(numbers, grp)
         others = [mid for mid in numbers if mid != self.member_id]
         if set(recipient_public_keys) != set(others):
-            raise ValueError("배포자를 뺀 모든 참여자의 공개키가 필요함")
+            raise ValueError("최초 작성자를 뺀 모든 참여자의 공개키가 필요함")
 
-        say(1, f"══ 초기 설정 (배포자 {self.member_id}) ══")
+        say(1, f"══ 초기 설정 (최초 작성자 {self.member_id}) ══")
         Y, shares, ys = generate_team_key(grp, numbers)
         team = TeamPublic(team_id, key_version, grp, Y,
                           {mid: MemberPublic(mid, numbers[mid], ys[mid]) for mid in numbers})
@@ -203,7 +201,7 @@ class Member:
             say(1, f"  {mid}에게 RSA-OAEP(PK_{mid}, ({numbers[mid]}, s_{mid})) 전송: {show(sealed[mid])}")
         self._share, self._team_id = shares[self.member_id], team_id
         shares.clear()
-        say(1, f"  배포자 {self.member_id}: 자기 조각만 보관하고 s·계수·다른 조각 폐기")
+        say(1, f"  최초 작성자 {self.member_id}: 자기 조각만 보관하고 s·계수·다른 조각 폐기")
         return team, sealed
 
     # ── 수신자 ──────────────────────────────────────────────────────────────

@@ -13,18 +13,14 @@ from typing import Sequence
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
-from shared import (N_MEMBERS, REAL_GROUP, THRESHOLD, Group, VerificationError, provisional,
-                    provisional_value, say, show)
+from shared import N_MEMBERS, THRESHOLD, Group, VerificationError, say, show
 
-RSA_KEY_BITS: int = provisional_value(
-    "RSA_KEY_BITS", 4096, "RSA 4096비트 (3072비트 군의 조각이 OAEP 한 블록에 들어가는 크기)")
-RSA_PUBLIC_EXPONENT: int = provisional_value(
-    "RSA_PUBLIC_EXPONENT", 65537, "RSA 공개 지수 65537")
-OAEP_HASH: hashes.HashAlgorithm = provisional_value("OAEP_HASH", hashes.SHA256(), "OAEP 해시 SHA-256")
-MGF1_HASH: hashes.HashAlgorithm = provisional_value("MGF1_HASH", hashes.SHA256(), "MGF1 해시 SHA-256")
+RSA_KEY_BITS = 4096
+RSA_PUBLIC_EXPONENT = 65537
+OAEP_HASH: hashes.HashAlgorithm = hashes.SHA256()
+MGF1_HASH: hashes.HashAlgorithm = hashes.SHA256()
 
 
-@provisional("참여자 번호 = 넘겨받은 순서대로 1, 2, …, N")
 def assign_numbers(member_ids: Sequence[str], grp: Group) -> dict[str, int]:
     if len(set(member_ids)) != len(member_ids):
         raise ValueError("참여자 ID가 중복됨")
@@ -58,10 +54,7 @@ def generate_team_key(grp: Group, numbers: dict[str, int]) -> tuple[int, dict[st
     반환: (팀 공개키 Y, 참여자별 조각 s_i, 참여자별 검증 공개키 y_i)
     """
     check_numbers(numbers, grp)
-    tag = "[미정] " if grp == REAL_GROUP else ""
-    say(1, f"  {tag}공개 파라미터 p={show(grp.p)}, q={show(grp.q)}, g={grp.g}, 임계값 {THRESHOLD}-of-{N_MEMBERS}")
-    if grp == REAL_GROUP:
-        say(1, "    (보고서는 3072비트 안전 소수만 정함 → p·g 값은 미정, RFC 3526 군을 임시로 사용)")
+    say(1, f"  공개 파라미터 p={show(grp.p)}, q={show(grp.q)}, g={grp.g}, 임계값 {THRESHOLD}-of-{N_MEMBERS}")
     say(1, "  참여자 번호 " + ", ".join(f"{mid}={x}" for mid, x in numbers.items()))
     coeffs = [grp.rand_scalar()] + [secrets.randbelow(grp.q) for _ in range(THRESHOLD - 1)]
     say(1, f"  [비밀] s={show(coeffs[0])}, a₁={show(coeffs[1])}, a₂={show(coeffs[2])}"
@@ -102,7 +95,6 @@ def rsa_oaep_decrypt(private_key: rsa.RSAPrivateKey, sealed: bytes,
         raise VerificationError("봉인된 조각을 열 수 없음") from None
 
 
-@provisional("(번호, 조각) = 각각 2바이트 길이 + 빅엔디언 정수")
 def encode_share(x: int, share: int) -> bytes:
     out = bytearray()
     for v in (x, share):
@@ -111,7 +103,6 @@ def encode_share(x: int, share: int) -> bytes:
     return bytes(out)
 
 
-@provisional("(번호, 조각) = 각각 2바이트 길이 + 빅엔디언 정수")
 def decode_share(data: bytes) -> tuple[int, int]:
     vals, i = [], 0
     for _ in range(2):

@@ -1,7 +1,7 @@
 """StarPath 암호화: ElGamal 캡슐화 → HKDF 키 유도 → SPN 블록 암호(CBC) → HMAC 태그
 
   encapsulate()      : C1 = g^k, Z = Y^k
-  spn_encrypt()      : ⊕RK → S-Box → 재배열(m=3/5) → 행 XOR 확산 (마지막 라운드 확산 생략) → ⊕RK_f
+  spn_encrypt()      : ⊕RK → AES S-Box(바이트) → 재배열(m=3/5) → 행 XOR 확산 (마지막 라운드 확산 생략) → ⊕RK_f
   cbc_encrypt()      : CBC 모드
   encrypt_document() : 위 과정을 묶어 문서 레코드 생성 (k·Z는 함수 밖으로 나가지 않음)
 """
@@ -12,9 +12,9 @@ import secrets
 from dataclasses import replace
 from typing import Sequence
 
-from shared import (REAL_BLOCK, SALT_BYTES, SBOX, BlockSpec, DocumentRecord, Group, check_block,
+from shared import (REAL_BLOCK, SALT_BYTES, BlockSpec, DocumentRecord, Group, check_block,
                     derive_keys, from_nibbles, hexw, hmac_tag, mac_input, mac_key, perm_multiplier,
-                    provisional, say, show, to_nibbles)
+                    say, show, sub_bytes, to_nibbles)
 
 
 def encapsulate(grp: Group, Y: int, k: int) -> tuple[int, int]:
@@ -22,7 +22,6 @@ def encapsulate(grp: Group, Y: int, k: int) -> tuple[int, int]:
     return pow(grp.g, k, grp.p), pow(Y, k, grp.p)
 
 
-@provisional("salt = SALT_BYTES 길이의 난수")
 def new_salt() -> bytes:
     return secrets.token_bytes(SALT_BYTES)
 
@@ -48,17 +47,17 @@ def spn_encrypt(block: int, round_keys: Sequence[int], spec: BlockSpec = REAL_BL
     n, state = spec.nibbles, block
     for r in range(spec.rounds):
         rk = round_keys[r]
-        # [직접 설계] 라운드 = 키 XOR → S-Box → 재배열 → 확산, 마지막 라운드는 확산 생략 후 최종 키 XOR
+        # [직접 설계] 라운드 = 키 XOR → AES S-Box(1바이트씩) → 재배열 → 확산, 마지막 라운드는 확산 생략 후 최종 키 XOR
         x = state ^ rk
-        ns = [SBOX[v] for v in to_nibbles(x, n)]
-        sb = from_nibbles(ns)
+        sb = sub_bytes(x, spec.block_bytes)
+        ns = to_nibbles(sb, n)
         m = perm_multiplier(rk, n)
         ns = permute(ns, m)
         pm = from_nibbles(ns)
         if r < spec.rounds - 1:
             ns = diffuse(ns)
         state = from_nibbles(ns)
-        say(2, f"        R{r + 1}: ⊕RK {hexw(x, n)} → S-Box {hexw(sb, n)} → 재배열(m={m}) {hexw(pm, n)}"
+        say(2, f"        R{r + 1}: ⊕RK {hexw(x, n)} → AES S-Box {hexw(sb, n)} → 재배열(m={m}) {hexw(pm, n)}"
                + (f" → 확산 {hexw(state, n)}" if r < spec.rounds - 1 else " (확산 생략)"))
     out = state ^ round_keys[-1]
     say(2, f"        ⊕RK_f → {hexw(out, n)}")
@@ -79,13 +78,11 @@ def cbc_encrypt(data: bytes, iv: bytes, round_keys: Sequence[int], spec: BlockSp
     return bytes(out)
 
 
-@provisional("CBC 패딩 = PKCS#7")
 def pad(data: bytes, spec: BlockSpec = REAL_BLOCK) -> bytes:
     n = spec.block_bytes - len(data) % spec.block_bytes
     return data + bytes([n]) * n
 
 
-@provisional("IV = 블록 크기만큼의 난수, 레코드에 함께 저장")
 def new_iv(spec: BlockSpec = REAL_BLOCK) -> bytes:
     return secrets.token_bytes(spec.block_bytes)
 

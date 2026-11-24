@@ -8,7 +8,7 @@
   :root {
     --bg: #f4f5f7; --panel: #ffffff; --line: #d9dce1; --text: #1d2129; --muted: #6b7280;
     --log-bg: #0f1419; --log-text: #d6dde6;
-    --secret: #ff8a80; --tbd: #ffcc66; --head: #8ecbff; --ok: #7ee2a8; --err: #ff6b6b;
+    --secret: #ff8a80; --head: #8ecbff; --ok: #7ee2a8; --err: #ff6b6b;
     --c0: #2563eb; --c1: #059669; --c2: #c2410c; --c3: #7c3aed; --c4: #be185d;
   }
   @media (prefers-color-scheme: dark) {
@@ -54,7 +54,6 @@
          word-break: break-all; }
   .log .h { color: var(--head); font-weight: 700; }
   .log .s { color: var(--secret); }
-  .log .t { color: var(--tbd); }
   .log .e { color: var(--err); font-weight: 700; }
   .log .r { color: var(--ok); font-weight: 700; }
   footer { padding: 6px 16px 10px; font-size: 12px; color: var(--muted); }
@@ -76,10 +75,6 @@
 </header>
 <main id="panes"></main>
 <footer>
-  <details>
-    <summary>[미정] 보고서에 정의되지 않아 임시값으로 동작하는 부분</summary>
-    <ul id="tbd"></ul>
-  </details>
   <div>시연용으로 참여자 5명(A~E)이 서버 프로세스 하나에 있습니다. 화면 한 칸은 참여자 한 명의 기기라고 보고, 칸마다 참여자를 골라 그 사람이 할 수 있는 동작만 합니다. 기본 3칸이며 "+ 참여자 화면 추가"로 다른 참여자 시점을 옆에 더 띄울 수 있습니다(최대 5칸). 키 준비 때 화면에 없는 참여자는 조각을 자동으로 받습니다.</div>
 </footer>
 <div class="busy" id="busy">계산 중… (RSA 4096비트 키 생성·3072비트 연산)</div>
@@ -119,17 +114,16 @@ function colorLine(line) {
   if (line.startsWith("══")) return `<span class="h">${e}</span>`;
   if (line.startsWith("✖")) return `<span class="e">${e}</span>`;
   if (line.includes("▶")) return `<span class="r">${e}</span>`;
-  return e.replace(/\[비밀\]/g, '<span class="s">[비밀]</span>').replace(/\[미정\]/g, '<span class="t">[미정]</span>');
+  return e.replace(/\[비밀\]/g, '<span class="s">[비밀]</span>');
 }
 
 function render() {
   const s = state;
   const team = s.team;
   $("#info").innerHTML = team
-    ? `팀 polygon · 키 버전 <b>${esc(team.key_version)}</b> · 배포자 <b>${esc(s.dealer)}</b> · Y=<b>${esc(team.Y)}</b> · 저장된 문서 <b>${s.documents.length}</b>개`
+    ? `팀 polygon · 키 버전 <b>${esc(team.key_version)}</b> · 최초 작성자 <b>${esc(s.dealer)}</b> · Y=<b>${esc(team.Y)}</b> · 저장된 문서 <b>${s.documents.length}</b>개`
     : `키 준비 전 (${s.threshold}-of-${s.n}). 한 칸에서 "키 준비"를 눌러 시작하세요.`;
   $("#rounds").checked = s.trace >= 2;
-  $("#tbd").innerHTML = Object.entries(s.provisional).map(([k, v]) => `<li><b>${esc(k)}</b>: ${esc(v)}</li>`).join("");
 
   const panes = $("#panes");
   panes.querySelectorAll("[data-draft]").forEach(el => drafts[el.dataset.draft] = el.value);
@@ -155,7 +149,7 @@ function paneHTML(mid, i) {
 
   const acts = [];
   if (!s.dealer) {
-    acts.push(`<div class="row"><button data-act="deal" data-i="${i}">키 준비 (배포자로 조각 나누기)</button></div>`);
+    acts.push(`<div class="row"><button data-act="deal" data-i="${i}">키 준비 (최초 작성자로 조각 나누기)</button></div>`);
   }
   if (me.inbox) {
     acts.push(`<div class="row"><button data-act="receive" data-i="${i}">봉인 조각 열어 받기</button></div>`);
